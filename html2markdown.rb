@@ -117,6 +117,15 @@ class HTML2Markdown
 				"_#{output_for_children(node)}_"
 			when 'b', 'strong'
 				"**#{output_for_children(node)}**"
+			# Tables are not part of Markdown, so we output WikiCreole
+			when 'tr'
+				node.children.select {|c|
+					c.name == 'th' || c.name == 'td'
+				}.map {|c|
+					output_for(c)
+				}.join.gsub(/\|\|/, '|') + "\n"
+			when 'th', 'td'
+				"|#{'=' if node.name == 'th'}#{output_for_children(node)}|"
 			when 'text'
 				wrap(node.content)
 			else
