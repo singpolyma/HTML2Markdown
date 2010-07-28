@@ -1,3 +1,4 @@
+# encoding: utf-8
 require 'nokogiri'
 require 'uri'
 
@@ -7,6 +8,7 @@ class HTML2Markdown
 		@links = []
 		@baseuri = (baseurl ? URI::parse(baseurl) : nil)
 		@section_level = 0
+		@encoding = str.encoding
 		@markdown = output_for(Nokogiri::HTML(str, baseurl).root).gsub(/\n\n+/, "\n\n")
 	end
 
@@ -48,6 +50,7 @@ class HTML2Markdown
 	end
 
 	def wrap(str)
+		return str if str =~ /\n/
 		out = ''
 		line = []
 		str.split(/[ \t]+/).each {|word|
@@ -57,7 +60,7 @@ class HTML2Markdown
 				line = []
 			end
 		}
-		out << line.join(' ')
+		out << line.join(' ') + (str[-1..-1] =~ /[ \t\n]/ ? str[-1..-1] : '')
 	end
 
 	def output_for(node)
@@ -67,7 +70,7 @@ class HTML2Markdown
 			when 'br'
 				"  \n"
 			when 'p', 'div'
-				"\n\n#{output_for_children(node)}\n\n"
+				"\n\n#{wrap(output_for_children(node))}\n\n"
 			when 'section', 'article'
 				@section_level += 1
 				o = "\n\n----\n\n#{output_for_children(node)}\n\n"
@@ -77,7 +80,7 @@ class HTML2Markdown
 				"\n\n" + ('#'*($1.to_i+@section_level) + ' ' + output_for_children(node)) + "\n\n"
 			when 'blockquote'
 				@section_level += 1
-				o = ("\n\n> #{output_for_children(node).gsub(/\n/, "\n> ")}\n\n").gsub(/> \n(> \n)+/, "> \n")
+				o = ("\n\n> #{wrap(output_for_children(node)).gsub(/\n/, "\n> ")}\n\n").gsub(/> \n(> \n)+/, "> \n")
 				@section_level -= 1
 				o
 			when 'ul'
@@ -93,7 +96,7 @@ class HTML2Markdown
 					"#{i}. #{output_for_children(el).gsub(/^(\t)|(    )/, "\t\t").gsub(/^>/, "\t>")}\n"
 				}.join + "\n\n"
 			when 'pre', 'code'
-				block = "\t" + output_for_children(node).gsub(/\n/, "\n\t")
+				block = "\t" + wrap(output_for_children(node)).gsub(/\n/, "\n\t")
 				if block.count("\n") < 1
 					"`#{output_for_children(node)}`"
 				else
@@ -127,9 +130,16 @@ class HTML2Markdown
 			when 'th', 'td'
 				"|#{'=' if node.name == 'th'}#{output_for_children(node)}|"
 			when 'text'
-				wrap(node.content)
+				# Sometimes Nokogiri lies. Force the encoding back to what we know it is
+				if (c = node.content.force_encoding(@encoding)) =~ /\S/
+					c.gsub!(/\n\n+/, '<$PreserveDouble$>')
+					c.gsub!(/\s+/, ' ')
+					c.gsub(/<\$PreserveDouble\$>/, "\n\n")
+				else
+					c
+				end
 			else
-				output_for_children(node)
+				wrap(output_for_children(node))
 		end
 	end
 
